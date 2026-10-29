@@ -45,6 +45,20 @@
 <div>Torque<strong id="torque">0.0 Nm</strong></div><div>Load<strong id="loadText">35 %</strong></div></div>
 <label>Mechanical load <input id="load" type="range" min="0" max="130" value="35"></label></article>
 
+
+<article class="card"><div class="head"><div><small>HMI PANEL</small><h2>Drive station</h2></div><b id="hmiMode">MANUAL</b></div>
+<div class="hmi"><div class="hmiTop"><strong>PF525 DRIVE</strong><span id="hmiStatus">STOPPED</span></div>
+<div class="hmiVals"><div>SP<strong id="hmiSp">30.0 Hz</strong></div><div>PV<strong id="hmiPv">0.0 Hz</strong></div><div>RPM<strong id="hmiRpm">0</strong></div><div>AMP<strong id="hmiAmp">0.0 A</strong></div></div>
+<div class="hmiBtns"><button id="hmiFwd">FWD</button><button id="hmiStop">STOP</button><button id="hmiRev">REV</button></div></div></article>
+
+<article class="card"><div class="head"><div><small>V/f CONTROL</small><h2>Voltage-frequency characteristic</h2></div></div><canvas id="vfCanvas" width="560" height="250"></canvas></article>
+
+<article class="card wide"><div class="head"><div><small>INVERTER OUTPUT</small><h2>Three-phase U-V-W fundamental</h2></div></div><canvas id="waveCanvas" width="760" height="260"></canvas></article>
+
+<article class="card"><div class="head"><div><small>FAULT MANAGER</small><h2>Fault injection</h2></div><b id="faultState">NO FAULT</b></div>
+<div class="faults"><button data-fault="OVERLOAD">Overload</button><button data-fault="STALL">Motor stall</button><button data-fault="UNDERVOLTAGE">DC undervoltage</button><button data-fault="OVERVOLTAGE">DC overvoltage</button><button data-fault="PHASELOSS">Input phase loss</button><button data-fault="COMMLOSS">Communication loss</button></div>
+<div class="faultInfo"><span>Code</span><strong id="faultCode">0</strong><span>Description</span><strong id="faultDescription">None</strong></div></article>
+
 <article class="card"><div class="head"><div><small>PLC MONITOR</small><h2 id="plcTitle">Virtual PLC</h2></div></div>
 <div class="metrics">
 <div>START<strong id="ioStart">0</strong></div><div>STOP<strong id="ioStop">0</strong></div>
