@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PF525 Digital Twin</title><link rel="stylesheet" href="./css/app.css"></head>
+<body>
+<header><div><small>VIRTUAL COMMISSIONING LAB</small><h1>PowerFlex 525 Digital Twin</h1></div>
+<div><span id="modeBadge">VIRTUAL</span><span id="bridgeBadge">Browser simulation</span></div></header>
+
+<main>
+<section class="card">
+<div class="head"><div><small>CONTROL SOURCE</small><h2>PLC mode</h2></div><b id="owner">OWNER: VIRTUAL PLC</b></div>
+<div class="modes">
+<label><input type="radio" name="mode" value="virtual" checked><span><strong>Virtual PLC</strong><small>Runs entirely in browser / GitHub Pages.</small></span></label>
+<label><input type="radio" name="mode" value="physical"><span><strong>Physical PLC</strong><small>Uses local EtherNet/IP bridge.</small></span></label>
+</div>
+<div id="physicalCfg" class="hidden physical"><input id="bridgeUrl" value="ws://127.0.0.1:8765"><button id="connectBridge">Connect bridge</button><span id="bridgeStatus">Disconnected</span></div>
+</section>
+
+<section class="grid">
+<article class="card power wide"><div class="head"><div><small>POWER CIRCUIT</small><h2>400 V three-phase</h2></div><b id="powerState">READY</b></div>
+<div class="flow">
+<div class="node live">L1 L2 L3<strong>400 VAC</strong></div><i></i>
+<button id="mccb" class="node live">MCCB<strong>ON</strong></button><i></i>
+<button id="km1" class="node live">KM1<strong>ON</strong></button><i></i>
+<div class="node">Rectifier<strong>6-pulse</strong></div><i></i>
+<div class="node">DC BUS<strong id="busV">650 V</strong></div><i></i>
+<div class="node">IGBT<strong>Inverter</strong></div><i></i>
+<div class="node">Motor<strong id="miniRpm">0 RPM</strong></div>
+</div></article>
+
+<article class="card"><div class="vfd"><div class="brand">PF525 <small>DIGITAL TWIN</small></div>
+<div class="display"><span id="driveState">STOPPED</span><strong id="freqDisplay">0.00</strong><em>Hz</em></div>
+<div class="keys"><button id="start">START</button><button id="stop">STOP</button><button id="reset">RESET</button></div>
+<div class="leds"><span><i id="readyLed"></i>Ready</span><span><i id="runLed"></i>Run</span><span><i id="faultLed"></i>Fault</span></div></div></article>
+
+<article class="card"><div class="head"><div><small>FIELD PANEL</small><h2>Operator commands</h2></div></div>
+<div class="buttons"><button id="fwd">FWD</button><button id="panelStop">STOP</button><button id="rev">REV</button></div>
+<label>Speed reference <input id="speed" type="range" min="0" max="60" step=".1" value="30"></label>
+<div class="line"><span>Reference</span><strong><span id="speedText">30.0</span> Hz</strong></div></article>
+
+<article class="card"><div class="head"><div><small>MOTOR MODEL</small><h2>Induction motor</h2></div><b id="direction">FWD</b></div>
+<div class="motor"><div class="body"><div class="fins"></div><div id="shaft" class="shaft"></div></div></div>
+<div class="metrics">
+<div>Frequency<strong id="mf">0.00 Hz</strong></div><div>RPM<strong id="rpm">0</strong></div>
+<div>Current<strong id="amps">0.00 A</strong></div><div>Voltage<strong id="volts">0 V</strong></div>
+<div>Torque<strong id="torque">0.0 Nm</strong></div><div>Load<strong id="loadText">35 %</strong></div></div>
+<label>Mechanical load <input id="load" type="range" min="0" max="130" value="35"></label></article>
+
+<article class="card"><div class="head"><div><small>PLC MONITOR</small><h2 id="plcTitle">Virtual PLC</h2></div></div>
+<div class="metrics">
+<div>START<strong id="ioStart">0</strong></div><div>STOP<strong id="ioStop">0</strong></div>
+<div>REVERSE<strong id="ioRev">0</strong></div><div>RUN<strong id="ioRun">0</strong></div>
+<div>REF<strong id="ioRef">30.0 Hz</strong></div><div>FBK<strong id="ioFbk">0.0 Hz</strong></div></div></article>
+
+<article class="card logcard"><div class="head"><div><small>COMMUNICATION INSPECTOR</small><h2>Command/event stream</h2></div><button id="clear">Clear</button></div><div id="log" class="log"></div></article>
+</section></main>
+<script type="module" src="./js/ui/app.js"></script></body></html>
