@@ -1,9 +1,76 @@
 export class VfdCore{
- constructor(events){this.events=events;this.faults={OVERLOAD:{code:4,description:"Motor overload"},STALL:{code:12,description:"Motor stall"},UNDERVOLTAGE:{code:20,description:"DC bus undervoltage"},OVERVOLTAGE:{code:21,description:"DC bus overvoltage"},PHASELOSS:{code:25,description:"Input phase loss"},COMMLOSS:{code:73,description:"Communication loss"}};this.state={mccb:true,km1:true,powered:true,ready:true,running:false,direction:1,status:"STOPPED",faultCode:0,faultDescription:"None",referenceHz:0,outputHz:0,rpm:0,currentA:0,voltageV:0,torqueNm:0,loadPercent:35,dcBusV:650,accelTimeS:5,decelTimeS:5,nominalVoltageV:400,nominalCurrentA:13,poles:4,source:"VIRTUAL PLC"}}
- setControlSource(name){this.state.source=name;this.events.emit("SYSTEM",`Control owner = ${name}`)}
- setLoad(x){this.state.loadPercent=Math.max(0,Math.min(150,Number(x)||0))}
- injectFault(name){const f=this.faults[name];if(!f)return;this.state.faultCode=f.code;this.state.faultDescription=f.description;this.state.running=false;this.events.emit("FAULT",`${f.description} (code ${f.code})`)}
- resetFault(){const s=this.state;if(s.faultCode)this.events.emit("FAULT",`Reset fault ${s.faultCode}`);s.faultCode=0;s.faultDescription="None";s.running=false}
- command(c){const s=this.state;if(!c)return;if(c.type==="START"){if(!s.ready||s.faultCode){this.events.emit("VFD","START rejected");return}s.running=true;if(Number.isFinite(c.referenceHz))s.referenceHz=c.referenceHz;if(c.direction)s.direction=c.direction;this.events.emit(s.source,`START ${s.direction>0?"FWD":"REV"} @ ${s.referenceHz.toFixed(1)} Hz`)}if(c.type==="STOP"){s.running=false;this.events.emit(s.source,"STOP")}if(c.type==="REFERENCE"){s.referenceHz=Math.max(0,Math.min(60,Number(c.value)||0));this.events.emit(s.source,`Reference ${s.referenceHz.toFixed(1)} Hz`)}if(c.type==="RESET")this.resetFault();if(c.type==="POWER"){if("mccb"in c)s.mccb=!!c.mccb;if("km1"in c)s.km1=!!c.km1;this.events.emit("POWER",`MCCB=${s.mccb?"ON":"OFF"} KM1=${s.km1?"ON":"OFF"}`)}}
- update(dt){const s=this.state;s.powered=s.mccb&&s.km1;s.ready=s.powered&&!s.faultCode;let busTarget=s.powered?650:0;if(s.faultDescription==="DC bus undervoltage")busTarget=320;if(s.faultDescription==="DC bus overvoltage")busTarget=820;s.dcBusV+=(busTarget-s.dcBusV)*Math.min(1,dt*(s.powered?3:1));if(!s.ready)s.running=false;const target=s.running?s.referenceHz:0,rising=target>s.outputHz,ramp=rising?s.accelTimeS:s.decelTimeS,step=60/Math.max(.1,ramp)*dt,error=target-s.outputHz;s.outputHz=Math.max(0,Math.abs(error)<=step?target:s.outputHz+Math.sign(error)*step);const load=s.loadPercent/100,sync=120*s.outputHz/s.poles;let slip=Math.min(.09,.007+.04*load);if(s.faultDescription==="Motor stall")slip=.98;s.rpm=s.direction*sync*(1-slip);s.voltageV=s.powered?Math.min(s.nominalVoltageV,s.nominalVoltageV*s.outputHz/50):0;s.currentA=s.outputHz>.05?s.nominalCurrentA*(.18+.72*load+Math.min(.45,Math.abs(error)/25)):0;if(s.faultDescription==="Motor overload")s.currentA*=1.55;if(s.faultDescription==="Motor stall")s.currentA*=2.4;const ratedTorque=5500/Math.max(1,(120*50/s.poles)*2*Math.PI/60);s.torqueNm=s.outputHz>.05?ratedTorque*load:0;if(s.faultCode)s.status="FAULTED";else if(!s.powered)s.status="POWER OFF";else if(s.running&&Math.abs(error)<.05)s.status="RUNNING";else if(s.running)s.status="ACCELERATING";else if(s.outputHz>.05)s.status="DECELERATING";else s.status="STOPPED";return s}
+  constructor(events){
+    this.events=events;
+    this.faults={
+      OVERLOAD:{code:4,description:"Motor overload"},
+      STALL:{code:12,description:"Motor stall"},
+      UNDERVOLTAGE:{code:20,description:"DC bus undervoltage"},
+      OVERVOLTAGE:{code:21,description:"DC bus overvoltage"},
+      PHASELOSS:{code:25,description:"Input phase loss"},
+      COMMLOSS:{code:73,description:"Communication loss"}
+    };
+    this.state={
+      mccb:true,km1:true,powered:true,ready:true,running:false,direction:1,status:"STOPPED",
+      faultCode:0,faultDescription:"None",referenceHz:0,outputHz:0,rpm:0,currentA:0,
+      voltageV:0,torqueNm:0,loadPercent:35,dcBusV:650,accelTimeS:5,decelTimeS:5,
+      nominalVoltageV:400,nominalCurrentA:13,poles:4,source:"VIRTUAL PLC"
+    };
+  }
+
+  setControlSource(name){this.state.source=name;this.events.emit("SYSTEM",`Control owner = ${name}`)}
+  setLoad(x){this.state.loadPercent=Math.max(0,Math.min(150,Number(x)||0))}
+  injectFault(name){const f=this.faults[name];if(!f)return;this.state.faultCode=f.code;this.state.faultDescription=f.description;this.state.running=false;this.events.emit("FAULT",`${f.description} (code ${f.code})`)}
+  resetFault(){const s=this.state;if(s.faultCode)this.events.emit("FAULT",`Reset fault ${s.faultCode}`);s.faultCode=0;s.faultDescription="None";s.running=false}
+
+  command(c){
+    const s=this.state;if(!c)return;
+    if(c.type==="START"){if(!s.ready||s.faultCode){this.events.emit("VFD","START rejected");return}s.running=true;if(Number.isFinite(c.referenceHz))s.referenceHz=c.referenceHz;if(c.direction)s.direction=c.direction;this.events.emit(s.source,`START ${s.direction>0?"FWD":"REV"} @ ${s.referenceHz.toFixed(1)} Hz`)}
+    if(c.type==="STOP"){s.running=false;this.events.emit(s.source,"STOP")}
+    if(c.type==="REFERENCE"){s.referenceHz=Math.max(0,Math.min(60,Number(c.value)||0));this.events.emit(s.source,`Reference ${s.referenceHz.toFixed(1)} Hz`)}
+    if(c.type==="DIRECTION"){s.direction=Number(c.value)>=0?1:-1;this.events.emit(s.source,`Direction ${s.direction>0?"FWD":"REV"}`)}
+    if(c.type==="RESET")this.resetFault()
+    if(c.type==="POWER"){if("mccb" in c)s.mccb=!!c.mccb;if("km1" in c)s.km1=!!c.km1;this.events.emit("POWER",`MCCB=${s.mccb?"ON":"OFF"} KM1=${s.km1?"ON":"OFF"}`)}
+  }
+
+  logicStatusWord(){
+    const s=this.state;let w=0;
+    if(s.ready)w|=1<<0;
+    if(s.running&&s.outputHz>.05)w|=1<<1;
+    if(s.direction>0){w|=1<<2;w|=1<<3}
+    if(s.status==="ACCELERATING")w|=1<<4;
+    if(s.status==="DECELERATING")w|=1<<5;
+    if(s.faultCode)w|=1<<7;
+    if(s.running&&Math.abs(s.referenceHz-s.outputHz)<.05)w|=1<<8;
+    return w&0xffff;
+  }
+  referenceWord(){return Math.max(0,Math.min(65535,Math.round(this.state.referenceHz*100)))}
+  feedbackWord(){return Math.max(0,Math.min(65535,Math.round(this.state.outputHz*100)))}
+
+  update(dt){
+    const s=this.state;
+    s.powered=s.mccb&&s.km1;s.ready=s.powered&&!s.faultCode;
+    let busTarget=s.powered?650:0;
+    if(s.faultDescription==="DC bus undervoltage")busTarget=320;
+    if(s.faultDescription==="DC bus overvoltage")busTarget=820;
+    s.dcBusV+=(busTarget-s.dcBusV)*Math.min(1,dt*(s.powered?3:1));
+    if(!s.ready)s.running=false;
+    const target=s.running?s.referenceHz:0,rising=target>s.outputHz,ramp=rising?s.accelTimeS:s.decelTimeS,step=60/Math.max(.1,ramp)*dt,error=target-s.outputHz;
+    s.outputHz=Math.max(0,Math.abs(error)<=step?target:s.outputHz+Math.sign(error)*step);
+    const load=s.loadPercent/100,sync=120*s.outputHz/s.poles;
+    let slip=Math.min(.09,.007+.04*load);if(s.faultDescription==="Motor stall")slip=.98;
+    s.rpm=s.direction*sync*(1-slip);
+    s.voltageV=s.powered?Math.min(s.nominalVoltageV,s.nominalVoltageV*s.outputHz/50):0;
+    s.currentA=s.outputHz>.05?s.nominalCurrentA*(.18+.72*load+Math.min(.45,Math.abs(error)/25)):0;
+    if(s.faultDescription==="Motor overload")s.currentA*=1.55;
+    if(s.faultDescription==="Motor stall")s.currentA*=2.4;
+    const ratedTorque=5500/Math.max(1,(120*50/s.poles)*2*Math.PI/60);
+    s.torqueNm=s.outputHz>.05?ratedTorque*load:0;
+    if(s.faultCode)s.status="FAULTED";
+    else if(!s.powered)s.status="POWER OFF";
+    else if(s.running&&Math.abs(error)<.05)s.status="RUNNING";
+    else if(s.running)s.status="ACCELERATING";
+    else if(s.outputHz>.05)s.status="DECELERATING";
+    else s.status="STOPPED";
+    return s;
+  }
 }

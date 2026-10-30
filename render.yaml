@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: pf525-remote-relay
+    runtime: python
+    plan: free
+    buildCommand: pip install -r relay/requirements.txt
+    startCommand: python relay/relay_server.py
+    healthCheckPath: /health
+    autoDeployTrigger: commit

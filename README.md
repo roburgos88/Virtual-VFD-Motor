@@ -1,47 +1,24 @@
-# PF525 Digital Twin — v0.1 Foundation
+# PF525 Digital Twin v0.6 — Public Remote Monitoring
 
-## Core principle
-The VFD core does not know who generates commands.
+## New
 
-Virtual PLC / Physical PLC -> Adapter -> VFD Core -> Motor / Process
+- Relay HTTP health endpoint `/health`.
+- Public WebSocket endpoint `/ws`.
+- `render.yaml` for Render Blueprint deployment.
+- Remote Viewer automatic reconnect with exponential backoff.
+- Public monitor links can prefill `mode`, `relay`, and `session` query parameters.
+- Viewer key is deliberately not embedded in URLs.
 
-## Virtual mode
-`frontend/` is pure HTML/CSS/JavaScript and can run on GitHub Pages.
+## Local relay URL
 
-## Physical commissioning mode
-The same frontend is served locally by `backend/main.py`. The local runtime adds WebSocket and EtherNet/IP port 44818.
+`ws://127.0.0.1:9000/ws`
 
-### Install
+## Public publisher example
+
 ```powershell
-python -m pip install -r backend\requirements.txt
+$env:PF525_RELAY_URL="wss://<your-service>.onrender.com/ws"
+$env:PF525_SESSION_ID="LAB-TEST"
+$env:PF525_PRODUCER_KEY="producer-secret"
+$env:PF525_VIEWER_KEY="viewer-secret"
+python backend\main.py 127.0.0.1
 ```
-
-### Run
-```powershell
-python backend\main.py 192.168.1.100
-```
-Open `http://127.0.0.1:8080`, select **Physical PLC**, then connect the local bridge.
-
-## GitHub Pages
-Push the repository to GitHub, then enable:
-Settings -> Pages -> Source -> GitHub Actions
-
-The included workflow publishes only `/frontend`.
-
-## Current milestone
-- Virtual/Physical PLC selector
-- Source abstraction
-- Browser VFD core
-- MCCB/KM1/DC bus behavior
-- Motor RPM/frequency/current/voltage/torque
-- Virtual PLC operator commands
-- PLC monitor
-- Communication Inspector
-- Local WebSocket bridge
-- Minimal RSLinx ListIdentity foundation
-
-## Next milestone
-- Full PF525 visual panel and HMI
-- V/f plot and U/V/W waveforms
-- Fault engine
-- Register Object / Logic Command / Reference / Feedback for MicroLogix explicit MSG

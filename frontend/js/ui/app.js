@@ -1,47 +1,486 @@
-import{EventBus}from"../core/eventBus.js";import{VfdCore}from"../core/vfdCore.js";import{VirtualPlcAdapter}from"../adapters/virtualPlcAdapter.js";import{PhysicalPlcAdapter}from"../adapters/physicalPlcAdapter.js";
-const $=id=>document.getElementById(id),events=new EventBus(),vfd=new VfdCore(events),vp=new VirtualPlcAdapter(vfd,events),pp=new PhysicalPlcAdapter(vfd,events);let adapter=vp,last=performance.now(),acc=0,phase=0;
-function mode(m){vp.deactivate();pp.deactivate();adapter=m==="physical"?pp:vp;adapter.activate();const p=m==="physical";$("physicalCfg").classList.toggle("hidden",!p);$("modeBadge").textContent=p?"PHYSICAL PLC":"VIRTUAL";$("owner").textContent=`OWNER: ${p?"PHYSICAL PLC":"VIRTUAL PLC"}`;$("plcTitle").textContent=p?"Physical PLC / Bridge":"Virtual PLC";if(p&&location.protocol==="https:")events.emit("SYSTEM","Physical mode requires local runtime; GitHub Pages is virtual-only.")}
-function bit(id,v){$(id).textContent=v?1:0}
-function drawVf(s){const c=$("vfCanvas"),x=c.getContext("2d"),w=c.width,h=c.height,p=34;x.clearRect(0,0,w,h);x.strokeStyle="#2c3a49";x.lineWidth=1;for(let i=0;i<=6;i++){let xx=p+(w-2*p)*i/6;x.beginPath();x.moveTo(xx,p);x.lineTo(xx,h-p);x.stroke()}for(let i=0;i<=4;i++){let yy=h-p-(h-2*p)*i/4;x.beginPath();x.moveTo(p,yy);x.lineTo(w-p,yy);x.stroke()}x.strokeStyle="#45d483";x.lineWidth=3;x.beginPath();x.moveTo(p,h-p);x.lineTo(p+(w-2*p)*50/60,p);x.lineTo(w-p,p);x.stroke();const opX=p+(w-2*p)*s.outputHz/60,opY=h-p-(h-2*p)*Math.min(400,s.voltageV)/400;x.fillStyle="#2aa9ff";x.beginPath();x.arc(opX,opY,6,0,Math.PI*2);x.fill();x.fillStyle="#91a0ad";x.font="12px Segoe UI";x.fillText("0 Hz",p-8,h-10);x.fillText("60 Hz",w-p-18,h-10);x.fillText("400 V",4,p+4)}
-function drawWaves(s,dt){const c=$("waveCanvas"),x=c.getContext("2d"),w=c.width,h=c.height;x.clearRect(0,0,w,h);x.strokeStyle="#2c3a49";x.beginPath();x.moveTo(0,h/2);x.lineTo(w,h/2);x.stroke();phase+=dt*s.outputHz*Math.PI*2;const amp=(h*.36)*(s.voltageV/400),colors=["#45d483","#2aa9ff","#f2b84b"];[0,-2*Math.PI/3,-4*Math.PI/3].forEach((off,j)=>{x.strokeStyle=colors[j];x.lineWidth=2;x.beginPath();for(let px=0;px<w;px++){const t=(px/w)*4*Math.PI,yy=h/2-Math.sin(t+phase+off)*amp;if(px===0)x.moveTo(px,yy);else x.lineTo(px,yy)}x.stroke()})}
+import { EventBus } from "../core/eventBus.js";
+import { VfdCore } from "../core/vfdCore.js";
+import { VirtualPlcAdapter } from "../adapters/virtualPlcAdapter.js";
+import { PhysicalPlcAdapter } from "../adapters/physicalPlcAdapter.js";
+import { RemoteMonitorAdapter } from "../adapters/remoteMonitorAdapter.js";
 
-function hex16(value){return `0x${(Number(value)&0xFFFF).toString(16).toUpperCase().padStart(4,"0")}`;}
+const $ = (id) => document.getElementById(id);
 
-function renderRegisters(s){
-  let logicCommand=0;
-  let logicStatus=vfd.logicStatusWord();
-  let reference=vfd.referenceWord();
-  let feedback=vfd.feedbackWord();
+const events = new EventBus();
+const vfd = new VfdCore(events);
+const virtualPlc = new VirtualPlcAdapter(vfd, events);
+const physicalPlc = new PhysicalPlcAdapter(vfd, events);
+const remoteMonitor = new RemoteMonitorAdapter(events);
 
-  if(activeAdapter===physicalPlc){
-    const r=physicalPlc.networkRegisters||{};
-    logicCommand=Number(r.logicCommand??0);
-    logicStatus=Number(r.logicStatus??logicStatus);
-    reference=Number(r.reference??reference);
-    feedback=Number(r.feedback??feedback);
-  }else{
-    const io=virtualPlc.snapshot();
-    if(io.stop)logicCommand|=1<<0;
-    if(io.run)logicCommand|=1<<1;
-    if(io.reverse)logicCommand|=1<<5;
-    else if(io.run)logicCommand|=1<<4;
+let activeAdapter = virtualPlc;
+let currentMode = "virtual";
+let lastFrame = performance.now();
+let publishAccumulator = 0;
+let waveformPhase = 0;
+
+function setMode(mode) {
+  virtualPlc.deactivate();
+  physicalPlc.deactivate();
+  remoteMonitor.deactivate();
+
+  currentMode = mode;
+  const physical = mode === "physical";
+  const remote = mode === "remote";
+
+  if (remote) {
+    activeAdapter = remoteMonitor;
+    remoteMonitor.activate();
+  } else if (physical) {
+    activeAdapter = physicalPlc;
+    physicalPlc.activate();
+  } else {
+    activeAdapter = virtualPlc;
+    virtualPlc.activate();
   }
 
-  $("regLogicCommandHex").textContent=hex16(logicCommand);
-  $("regLogicCommandDec").textContent=String(logicCommand);
-  $("regLogicStatusHex").textContent=hex16(logicStatus);
-  $("regLogicStatusDec").textContent=String(logicStatus);
-  $("regReferenceHex").textContent=hex16(reference);
-  $("regReferenceDec").textContent=String(reference);
-  $("regReferenceHz").textContent=(reference/100).toFixed(2);
-  $("regFeedbackHex").textContent=hex16(feedback);
-  $("regFeedbackDec").textContent=String(feedback);
-  $("regFeedbackHz").textContent=(feedback/100).toFixed(2);
+  $("physicalCfg").classList.toggle("hidden", !physical);
+  $("remoteCfg").classList.toggle("hidden", !remote);
+  $("readOnlyBanner").classList.toggle("hidden", !remote);
+
+  document.body.classList.toggle("physicalMode", physical);
+  document.body.classList.toggle("readonlyMode", remote);
+
+  $("modeBadge").textContent = remote
+    ? "REMOTE MONITOR"
+    : physical
+      ? "LOCAL COMMISSIONING"
+      : "VIRTUAL";
+
+  $("owner").textContent = `OWNER: ${
+    remote ? "REMOTE SESSION" : physical ? "PHYSICAL PLC" : "VIRTUAL PLC"
+  }`;
+
+  $("plcTitle").textContent = remote
+    ? "Remote PLC / Session"
+    : physical
+      ? "Physical PLC / Bridge"
+      : "Virtual PLC";
+
+  $("bridgeBadge").textContent = remote
+    ? "Remote session"
+    : physical
+      ? "Local runtime"
+      : "Browser simulation";
+
+  if (physical) {
+    events.emit(
+      "SYSTEM",
+      "Local Commissioning selected — control belongs to the external PLC."
+    );
+  }
+
+  if (remote) {
+    events.emit(
+      "SYSTEM",
+      "Remote Monitor selected — read-only command path enforced."
+    );
+  }
 }
 
-function render(s){$("driveState").textContent=s.status;$("freqDisplay").textContent=s.outputHz.toFixed(2);$("busV").textContent=`${s.dcBusV.toFixed(0)} V`;$("miniRpm").textContent=`${Math.abs(s.rpm).toFixed(0)} RPM`;$("mf").textContent=`${s.outputHz.toFixed(2)} Hz`;$("rpm").textContent=Math.abs(s.rpm).toFixed(0);$("amps").textContent=`${s.currentA.toFixed(2)} A`;$("volts").textContent=`${s.voltageV.toFixed(0)} V`;$("torque").textContent=`${s.torqueNm.toFixed(1)} Nm`;$("loadText").textContent=`${s.loadPercent.toFixed(0)} %`;$("direction").textContent=s.direction>0?"FWD":"REV";$("powerState").textContent=s.ready?"READY":s.status;$("readyLed").classList.toggle("on",s.ready);$("runLed").classList.toggle("on",s.running&&s.ready);$("faultLed").classList.toggle("on",!!s.faultCode);$("shaft").classList.toggle("spin",s.outputHz>.2);$("mccb").classList.toggle("live",s.mccb);$("mccb").querySelector("strong").textContent=s.mccb?"ON":"OFF";$("km1").classList.toggle("live",s.km1);$("km1").querySelector("strong").textContent=s.km1?"ON":"OFF";$("hmiStatus").textContent=s.status;$("hmiSp").textContent=`${s.referenceHz.toFixed(1)} Hz`;$("hmiPv").textContent=`${s.outputHz.toFixed(1)} Hz`;$("hmiRpm").textContent=Math.abs(s.rpm).toFixed(0);$("hmiAmp").textContent=`${s.currentA.toFixed(1)} A`;$("faultState").textContent=s.faultCode?"FAULT ACTIVE":"NO FAULT";$("faultCode").textContent=s.faultCode;$("faultDescription").textContent=s.faultDescription;const io=adapter.snapshot();bit("ioStart",io.start);bit("ioStop",io.stop);bit("ioRev",io.reverse);bit("ioRun",io.run);$("ioRef").textContent=`${Number(io.referenceHz||0).toFixed(1)} Hz`;$("ioFbk").textContent=`${s.outputHz.toFixed(1)} Hz`}
-events.subscribe((e,list)=>{$("log").innerHTML=list.slice(0,60).map(x=>`<div class="event"><span>${x.time.toLocaleTimeString([],{hour12:false})}</span><b>${x.source}</b><span>${x.message}</span></div>`).join("")});
-document.querySelectorAll('input[name="mode"]').forEach(r=>r.onchange=e=>mode(e.target.value));$("connectBridge").onclick=()=>pp.connect($("bridgeUrl").value.trim());pp.onConnectionChange=c=>{$("bridgeStatus").textContent=c?"Connected":"Disconnected";$("bridgeBadge").textContent=c?"Local EtherNet/IP bridge":"Browser simulation"};
-$("speed").oninput=e=>{$("speedText").textContent=Number(e.target.value).toFixed(1);if(adapter===vp)vp.setReference(e.target.value)};$("load").oninput=e=>vfd.setLoad(e.target.value);$("fwd").onclick=()=>vp.forward();$("rev").onclick=()=>vp.reverse();$("panelStop").onclick=()=>vp.stop();$("start").onclick=()=>adapter===vp&&vp.forward();$("stop").onclick=()=>adapter===vp&&vp.stop();$("reset").onclick=()=>adapter===vp&&vp.reset();$("mccb").onclick=()=>vfd.command({type:"POWER",mccb:!vfd.state.mccb});$("km1").onclick=()=>vfd.command({type:"POWER",km1:!vfd.state.km1});$("hmiFwd").onclick=()=>vp.forward();$("hmiRev").onclick=()=>vp.reverse();$("hmiStop").onclick=()=>vp.stop();document.querySelectorAll("[data-fault]").forEach(b=>b.onclick=()=>vfd.injectFault(b.dataset.fault));$("clear").onclick=()=>events.clear();
-function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;const s=vfd.update(dt);render(s);drawVf(s);drawWaves(s,dt);acc+=dt;if(acc>.1&&adapter===pp){acc=0;pp.publish(s)}requestAnimationFrame(frame)}
-vp.activate();vp.setReference(30);events.emit("SYSTEM","PF525 Digital Twin initialized");requestAnimationFrame(frame);
+function setBit(id, value) {
+  $(id).textContent = value ? "1" : "0";
+}
+
+function hex16(value) {
+  return `0x${(Number(value) & 0xffff)
+    .toString(16)
+    .toUpperCase()
+    .padStart(4, "0")}`;
+}
+
+function drawVf(state) {
+  const canvas = $("vfCanvas");
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  const p = 34;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = "#2c3a49";
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i <= 6; i++) {
+    const x = p + ((w - 2 * p) * i) / 6;
+    ctx.beginPath();
+    ctx.moveTo(x, p);
+    ctx.lineTo(x, h - p);
+    ctx.stroke();
+  }
+
+  for (let i = 0; i <= 4; i++) {
+    const y = h - p - ((h - 2 * p) * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(p, y);
+    ctx.lineTo(w - p, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "#45d483";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(p, h - p);
+  ctx.lineTo(p + ((w - 2 * p) * 50) / 60, p);
+  ctx.lineTo(w - p, p);
+  ctx.stroke();
+
+  const hz = Number(state.outputHz || 0);
+  const voltage = Number(state.voltageV || 0);
+  const opX = p + ((w - 2 * p) * hz) / 60;
+  const opY = h - p - ((h - 2 * p) * Math.min(400, voltage)) / 400;
+
+  ctx.fillStyle = "#2aa9ff";
+  ctx.beginPath();
+  ctx.arc(opX, opY, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#91a0ad";
+  ctx.font = "12px Segoe UI";
+  ctx.fillText("0 Hz", p - 8, h - 10);
+  ctx.fillText("60 Hz", w - p - 18, h - 10);
+  ctx.fillText("400 V", 4, p + 4);
+}
+
+function drawWaveforms(state, dt) {
+  const canvas = $("waveCanvas");
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = "#2c3a49";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, h / 2);
+  ctx.lineTo(w, h / 2);
+  ctx.stroke();
+
+  waveformPhase += dt * Number(state.outputHz || 0) * Math.PI * 2;
+  const amplitude = (h * 0.36 * Number(state.voltageV || 0)) / 400;
+  const colors = ["#45d483", "#2aa9ff", "#f2b84b"];
+  const offsets = [0, (-2 * Math.PI) / 3, (-4 * Math.PI) / 3];
+
+  offsets.forEach((offset, index) => {
+    ctx.strokeStyle = colors[index];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    for (let px = 0; px < w; px++) {
+      const t = (px / w) * 4 * Math.PI;
+      const y = h / 2 - Math.sin(t + waveformPhase + offset) * amplitude;
+      if (px === 0) ctx.moveTo(px, y);
+      else ctx.lineTo(px, y);
+    }
+
+    ctx.stroke();
+  });
+}
+
+function applyRemoteState(snapshot) {
+  if (!snapshot) return vfd.state;
+
+  const keys = [
+    "status",
+    "referenceHz",
+    "outputHz",
+    "rpm",
+    "currentA",
+    "voltageV",
+    "torqueNm",
+    "loadPercent",
+    "dcBusV",
+    "faultCode",
+    "faultDescription",
+    "ready",
+    "running",
+    "direction",
+    "mccb",
+    "km1",
+    "powered",
+  ];
+
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(snapshot, key)) {
+      vfd.state[key] = snapshot[key];
+    }
+  }
+
+  return vfd.state;
+}
+
+function applyPhysicalState(snapshot) {
+  if (!snapshot) return vfd.state;
+  return applyRemoteState(snapshot);
+}
+
+function renderRegisters(state) {
+  let command = 0;
+  let status = vfd.logicStatusWord();
+  let reference = vfd.referenceWord();
+  let feedback = vfd.feedbackWord();
+
+  if (currentMode === "physical") {
+    const r = physicalPlc.networkRegisters || {};
+    command = Number(r.logicCommand || 0);
+    status = Number(r.logicStatus ?? status);
+    reference = Number(r.reference ?? reference);
+    feedback = Number(r.feedback ?? feedback);
+  } else if (currentMode === "remote") {
+    const r = remoteMonitor.networkRegisters || {};
+    command = Number(r.logicCommand || 0);
+    status = Number(r.logicStatus ?? status);
+    reference = Number(r.reference ?? reference);
+    feedback = Number(r.feedback ?? feedback);
+  } else {
+    const io = virtualPlc.snapshot();
+    if (io.stop) command |= 1 << 0;
+    if (io.run) command |= 1 << 1;
+    if (io.reverse) command |= 1 << 5;
+    else if (io.run) command |= 1 << 4;
+  }
+
+  $("regCommandHex").textContent = hex16(command);
+  $("regCommandDec").textContent = String(command);
+  $("regStatusHex").textContent = hex16(status);
+  $("regStatusDec").textContent = String(status);
+  $("regReferenceHex").textContent = hex16(reference);
+  $("regReferenceDec").textContent = String(reference);
+  $("regReferenceHz").textContent = (reference / 100).toFixed(2);
+  $("regFeedbackHex").textContent = hex16(feedback);
+  $("regFeedbackDec").textContent = String(feedback);
+  $("regFeedbackHz").textContent = (feedback / 100).toFixed(2);
+}
+
+function render(state) {
+  const outputHz = Number(state.outputHz || 0);
+  const rpm = Number(state.rpm || 0);
+  const currentA = Number(state.currentA || 0);
+  const voltageV = Number(state.voltageV || 0);
+  const torqueNm = Number(state.torqueNm || 0);
+  const loadPercent = Number(state.loadPercent || 0);
+  const dcBusV = Number(state.dcBusV || 0);
+  const referenceHz = Number(state.referenceHz || 0);
+
+  $("driveState").textContent = state.status || "WAITING";
+  $("freqDisplay").textContent = outputHz.toFixed(2);
+  $("busV").textContent = `${dcBusV.toFixed(0)} V`;
+  $("miniRpm").textContent = `${Math.abs(rpm).toFixed(0)} RPM`;
+
+  $("mf").textContent = `${outputHz.toFixed(2)} Hz`;
+  $("rpm").textContent = Math.abs(rpm).toFixed(0);
+  $("amps").textContent = `${currentA.toFixed(2)} A`;
+  $("volts").textContent = `${voltageV.toFixed(0)} V`;
+  $("torque").textContent = `${torqueNm.toFixed(1)} Nm`;
+  $("loadText").textContent = `${loadPercent.toFixed(0)} %`;
+  $("direction").textContent = Number(state.direction || 1) > 0 ? "FWD" : "REV";
+
+  $("powerState").textContent = state.ready ? "READY" : state.status || "WAITING";
+  $("readyLed").classList.toggle("on", !!state.ready);
+  $("runLed").classList.toggle("on", !!state.running && !!state.ready);
+  $("faultLed").classList.toggle("on", !!state.faultCode);
+  $("shaft").classList.toggle("spin", outputHz > 0.2);
+
+  $("mccb").classList.toggle("live", !!state.mccb);
+  $("mccb").querySelector("strong").textContent = state.mccb ? "ON" : "OFF";
+  $("km1").classList.toggle("live", !!state.km1);
+  $("km1").querySelector("strong").textContent = state.km1 ? "ON" : "OFF";
+
+  $("hmiStatus").textContent = state.status || "WAITING";
+  $("hmiSp").textContent = `${referenceHz.toFixed(1)} Hz`;
+  $("hmiPv").textContent = `${outputHz.toFixed(1)} Hz`;
+  $("hmiRpm").textContent = Math.abs(rpm).toFixed(0);
+  $("hmiAmp").textContent = `${currentA.toFixed(1)} A`;
+
+  $("faultState").textContent = state.faultCode ? "FAULT ACTIVE" : "NO FAULT";
+  $("faultCode").textContent = Number(state.faultCode || 0);
+  $("faultDescription").textContent = state.faultDescription || "None";
+
+  const io = activeAdapter.snapshot();
+  setBit("ioStart", io.start);
+  setBit("ioStop", io.stop);
+  setBit("ioRev", io.reverse);
+  setBit("ioRun", io.run);
+  $("ioRef").textContent = `${Number(io.referenceHz || 0).toFixed(1)} Hz`;
+  $("ioFbk").textContent = `${outputHz.toFixed(1)} Hz`;
+
+  renderRegisters(state);
+}
+
+events.subscribe((_event, list) => {
+  $("log").innerHTML = list
+    .slice(0, 60)
+    .map(
+      (item) =>
+        `<div class="event"><span>${item.time.toLocaleTimeString([], {
+          hour12: false,
+        })}</span><b>${item.source}</b><span>${item.message}</span></div>`
+    )
+    .join("");
+});
+
+document.querySelectorAll('input[name="mode"]').forEach((radio) => {
+  radio.addEventListener("change", (event) => setMode(event.target.value));
+});
+
+$("connectBridge").addEventListener("click", () => {
+  physicalPlc.connect($("bridgeUrl").value.trim());
+});
+
+physicalPlc.onConnectionChange = (connected) => {
+  $("bridgeStatus").textContent = connected ? "Connected" : "Disconnected";
+  $("bridgeBadge").textContent = connected
+    ? "Local EtherNet/IP bridge"
+    : "Local runtime";
+};
+
+$("connectRemote").addEventListener("click", () => {
+  remoteMonitor.connect(
+    $("relayUrl").value.trim(),
+    $("sessionId").value.trim(),
+    $("viewerKey").value
+  );
+});
+
+remoteMonitor.onConnectionChange = (connected, meta) => {
+  $("remoteStatus").textContent = meta.reconnecting
+    ? "RECONNECTING"
+    : connected
+      ? meta.publisherOnline
+        ? "ONLINE"
+        : "WAITING FOR LAB"
+      : "Disconnected";
+
+  $("remoteViewers").textContent = `${Number(meta.viewers || 0)} viewer${
+    Number(meta.viewers || 0) === 1 ? "" : "s"
+  }`;
+
+  $("remoteLatency").textContent =
+    meta.latencyMs == null ? "-- ms" : `${meta.latencyMs} ms`;
+
+  $("bridgeBadge").textContent = meta.reconnecting
+    ? "Remote reconnecting"
+    : connected
+      ? meta.publisherOnline
+        ? "Remote session online"
+        : "Remote session waiting"
+      : "Remote session";
+};
+
+remoteMonitor.onSnapshot = (_payload, meta) => {
+  $("remoteStatus").textContent = "ONLINE";
+  $("remoteViewers").textContent = `${Number(meta.viewers || 0)} viewer${
+    Number(meta.viewers || 0) === 1 ? "" : "s"
+  }`;
+  $("remoteLatency").textContent =
+    meta.latencyMs == null ? "-- ms" : `${meta.latencyMs} ms`;
+};
+
+$("speed").addEventListener("input", (event) => {
+  $("speedText").textContent = Number(event.target.value).toFixed(1);
+  if (currentMode === "virtual") {
+    virtualPlc.setReference(Number(event.target.value));
+  }
+});
+
+$("load").addEventListener("input", (event) => {
+  if (currentMode === "virtual") {
+    vfd.setLoad(Number(event.target.value));
+  }
+});
+
+$("fwd").onclick = () => {
+  if (currentMode === "virtual") virtualPlc.forward();
+};
+$("rev").onclick = () => {
+  if (currentMode === "virtual") virtualPlc.reverse();
+};
+$("panelStop").onclick = () => {
+  if (currentMode === "virtual") virtualPlc.stop();
+};
+$("start").onclick = () => {
+  if (currentMode === "virtual") virtualPlc.forward();
+};
+$("stop").onclick = () => {
+  if (currentMode === "virtual") virtualPlc.stop();
+};
+$("reset").onclick = () => {
+  if (currentMode === "virtual") virtualPlc.reset();
+};
+
+$("mccb").onclick = () => {
+  if (currentMode === "virtual") {
+    vfd.command({ type: "POWER", mccb: !vfd.state.mccb });
+  }
+};
+
+$("km1").onclick = () => {
+  if (currentMode === "virtual") {
+    vfd.command({ type: "POWER", km1: !vfd.state.km1 });
+  }
+};
+
+$("hmiFwd").onclick = () => {
+  if (currentMode === "virtual") virtualPlc.forward();
+};
+$("hmiRev").onclick = () => {
+  if (currentMode === "virtual") virtualPlc.reverse();
+};
+$("hmiStop").onclick = () => {
+  if (currentMode === "virtual") virtualPlc.stop();
+};
+
+document.querySelectorAll("[data-fault]").forEach((button) => {
+  button.onclick = () => {
+    if (currentMode === "virtual") {
+      vfd.injectFault(button.dataset.fault);
+    }
+  };
+});
+
+$("clear").onclick = () => events.clear();
+
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastFrame) / 1000);
+  lastFrame = now;
+
+  let state;
+  if (currentMode === "remote") {
+    state = applyRemoteState(remoteMonitor.remoteState);
+  } else if (currentMode === "physical") {
+    state = applyPhysicalState(physicalPlc.authoritativeState);
+  } else {
+    state = vfd.update(dt);
+  }
+
+  render(state);
+  drawVf(state);
+  drawWaveforms(state, dt);
+
+  requestAnimationFrame(frame);
+}
+
+const query = new URLSearchParams(location.search);
+const queryRelay = query.get("relay");
+const querySession = query.get("session");
+const queryMode = query.get("mode");
+
+if (queryRelay) $("relayUrl").value = queryRelay;
+if (querySession) $("sessionId").value = querySession;
+
+virtualPlc.activate();
+virtualPlc.setReference(30);
+
+if (queryMode === "remote") {
+  const remoteRadio = document.querySelector('input[name="mode"][value="remote"]');
+  if (remoteRadio) {
+    remoteRadio.checked = true;
+    setMode("remote");
+  }
+}
+
+events.emit("SYSTEM", "PF525 Digital Twin v0.6 initialized — public WSS remote monitoring");
+requestAnimationFrame(frame);
