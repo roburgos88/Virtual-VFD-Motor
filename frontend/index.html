@@ -207,6 +207,38 @@
       <div class="legend"><strong>Logic Command:</strong> b0 Stop · b1 Start · b3 Clear Fault · b4 Forward · b5 Reverse</div>
     </article>
 
+
+    <article class="card parameterCard wide">
+      <div class="head">
+        <div>
+          <small>PF525 PARAMETER BROWSER</small>
+          <h2>Parameter Object 0x0F / DPI Parameter Object 0x93</h2>
+        </div>
+        <b id="parameterMode">VIRTUAL MODEL</b>
+      </div>
+      <div class="parameterIntro">
+        Selected commissioning parameters and live monitor values. In Local Commissioning and Remote Monitor,
+        values come from the authoritative Python PF525 runtime.
+      </div>
+      <div class="parameterTableWrap">
+        <table class="parameterTable">
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th>Name</th>
+              <th>Raw</th>
+              <th>Engineering value</th>
+              <th>Access</th>
+            </tr>
+          </thead>
+          <tbody id="parameterRows"></tbody>
+        </table>
+      </div>
+      <div class="legend">
+        CIP single read/write: Class <strong>0x0F</strong>, Attribute 1 · DPI Class <strong>0x93</strong>, Attribute 9 (NVS) / 10 (RAM).
+      </div>
+    </article>
+
     <article class="card">
       <div class="head"><div><small>PLC MONITOR</small><h2 id="plcTitle">Virtual PLC</h2></div></div>
       <div class="metrics">

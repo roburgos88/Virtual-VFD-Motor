@@ -6,6 +6,7 @@ export class RemoteMonitorAdapter {
     this.connected = false;
     this.remoteState = null;
     this.networkRegisters = {logicCommand:0,logicStatus:0,reference:0,feedback:0};
+    this.parameters = [];
     this.meta = {sessionId:"",publisherOnline:false,viewers:0,latencyMs:null,reconnecting:false};
     this.onConnectionChange = null;
     this.onSnapshot = null;
@@ -73,6 +74,7 @@ export class RemoteMonitorAdapter {
         const payload = message.payload || {};
         this.remoteState = payload.drive || null;
         this.networkRegisters = {...this.networkRegisters, ...(payload.network || {})};
+        this.parameters = Array.isArray(payload.parameters) ? payload.parameters : [];
         this.meta.publisherOnline = true;
         this.meta.viewers = Number(message.viewers || this.meta.viewers || 0);
         if (Number.isFinite(message.serverTimeMs)) this.meta.latencyMs = Math.max(0, Date.now() - message.serverTimeMs);

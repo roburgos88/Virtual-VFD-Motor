@@ -124,7 +124,7 @@ function drawVf(state) {
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(p, h - p);
-  ctx.lineTo(p + ((w - 2 * p) * 50) / 60, p);
+  const baseHz = Math.max(0.01, Math.min(60, Number(state.motorNpHz || 50)));\n  ctx.lineTo(p + ((w - 2 * p) * baseHz) / 60, p);
   ctx.lineTo(w - p, p);
   ctx.stroke();
 
@@ -255,6 +255,46 @@ function renderRegisters(state) {
   $("regFeedbackHz").textContent = (feedback / 100).toFixed(2);
 }
 
+
+function virtualParameters(state) {
+  const defs = [
+    {number:1,code:"b001",name:"Output Freq",units:"Hz",scale:.01,precision:2,writable:false,value:Number(state.outputHz||0)},
+    {number:3,code:"b003",name:"Output Current",units:"A",scale:.01,precision:2,writable:false,value:Number(state.currentA||0)},
+    {number:4,code:"b004",name:"Output Voltage",units:"VAC",scale:.1,precision:1,writable:false,value:Number(state.voltageV||0)},
+    {number:5,code:"b005",name:"DC Bus Voltage",units:"VDC",scale:1,precision:0,writable:false,value:Number(state.dcBusV||0)},
+    {number:31,code:"P031",name:"Motor NP Volts",units:"VAC",scale:1,precision:0,writable:true,value:Number(state.nominalVoltageV||400)},
+    {number:32,code:"P032",name:"Motor NP Hertz",units:"Hz",scale:1,precision:0,writable:true,value:Number(state.motorNpHz||50)},
+    {number:41,code:"P041",name:"Accel Time 1",units:"s",scale:.01,precision:2,writable:true,value:Number(state.accelTimeS||5)},
+    {number:42,code:"P042",name:"Decel Time 1",units:"s",scale:.01,precision:2,writable:true,value:Number(state.decelTimeS||5)},
+    {number:43,code:"P043",name:"Minimum Freq",units:"Hz",scale:.01,precision:2,writable:true,value:Number(state.minFreqHz||0)},
+    {number:44,code:"P044",name:"Maximum Freq",units:"Hz",scale:.01,precision:2,writable:true,value:Number(state.maxFreqHz||60)},
+  ];
+  return defs.map(p=>({...p,raw:Math.max(0,Math.min(65535,Math.round(p.value/p.scale)))}));
+}
+
+function renderParameters(state) {
+  let parameters = [];
+  if (currentMode === "physical") parameters = physicalPlc.parameters || [];
+  else if (currentMode === "remote") parameters = remoteMonitor.parameters || [];
+  else parameters = virtualParameters(state);
+
+  $("parameterMode").textContent =
+    currentMode === "physical" ? "AUTHORITATIVE LOCAL" :
+    currentMode === "remote" ? "REMOTE READ ONLY" : "VIRTUAL MODEL";
+
+  $("parameterRows").innerHTML = parameters.map(p=>{
+    const precision = Number(p.precision || 0);
+    const value = Number(p.value || 0).toFixed(precision);
+    return `<tr>
+      <td><code>${p.code || ("P"+String(p.number).padStart(3,"0"))}</code></td>
+      <td>${p.name || ""}</td>
+      <td><code>${Number(p.raw || 0)}</code></td>
+      <td>${value} ${p.units || ""}</td>
+      <td class="${p.writable ? "rw":"ro"}">${p.writable ? "R/W":"R/O"}</td>
+    </tr>`;
+  }).join("");
+}
+
 function render(state) {
   const outputHz = Number(state.outputHz || 0);
   const rpm = Number(state.rpm || 0);
@@ -308,6 +348,7 @@ function render(state) {
   $("ioFbk").textContent = `${outputHz.toFixed(1)} Hz`;
 
   renderRegisters(state);
+  renderParameters(state);
 }
 
 events.subscribe((_event, list) => {

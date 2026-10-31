@@ -3,6 +3,7 @@ export class PhysicalPlcAdapter{
     this.vfd=vfd;this.events=events;this.active=false;this.socket=null;this.connected=false;
     this.io={start:0,stop:0,reverse:0,run:0,referenceHz:0};
     this.networkRegisters={logicCommand:0,logicStatus:0,reference:0,feedback:0};
+    this.parameters=[];
     this.authoritativeState=null;
     this.onSnapshot=null;
     this.onConnectionChange=null;
@@ -16,8 +17,9 @@ export class PhysicalPlcAdapter{
     this.socket.onclose=()=>{this.connected=false;this.onConnectionChange?.(false);this.events.emit("BRIDGE","Local runtime disconnected")};
     this.socket.onerror=()=>this.events.emit("BRIDGE","WebSocket error");
     this.socket.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}
-      if(m.type==="AUTHORITATIVE_SNAPSHOT"){const p=m.payload||{};this.authoritativeState=p.drive||null;this.networkRegisters={...this.networkRegisters,...(p.network||{})};this.onSnapshot?.(p);return}
+      if(m.type==="AUTHORITATIVE_SNAPSHOT"){const p=m.payload||{};this.authoritativeState=p.drive||null;this.networkRegisters={...this.networkRegisters,...(p.network||{})};this.parameters=Array.isArray(p.parameters)?p.parameters:[];this.onSnapshot?.(p);return}
       if(m.type==="PLC_EVENT"){this.events.emit("EtherNet/IP",m.summary||"PLC event");return}
+      if(m.type==="PARAMETER_EVENT"){this.events.emit("Parameter",m.summary||"Parameter event");return}
       if(m.type==="REGISTER_SNAPSHOT"){this.networkRegisters={...this.networkRegisters,...(m.registers||{})};return}
       if(m.type==="PLC_COMMAND"&&this.active){
         const c=m.command||{};

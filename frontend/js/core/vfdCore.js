@@ -13,7 +13,7 @@ export class VfdCore{
       mccb:true,km1:true,powered:true,ready:true,running:false,direction:1,status:"STOPPED",
       faultCode:0,faultDescription:"None",referenceHz:0,outputHz:0,rpm:0,currentA:0,
       voltageV:0,torqueNm:0,loadPercent:35,dcBusV:650,accelTimeS:5,decelTimeS:5,
-      nominalVoltageV:400,nominalCurrentA:13,poles:4,source:"VIRTUAL PLC"
+      nominalVoltageV:400,nominalCurrentA:13,motorNpHz:50,minFreqHz:0,maxFreqHz:60,poles:4,source:"VIRTUAL PLC"
     };
   }
 
@@ -54,16 +54,16 @@ export class VfdCore{
     if(s.faultDescription==="DC bus overvoltage")busTarget=820;
     s.dcBusV+=(busTarget-s.dcBusV)*Math.min(1,dt*(s.powered?3:1));
     if(!s.ready)s.running=false;
-    const target=s.running?s.referenceHz:0,rising=target>s.outputHz,ramp=rising?s.accelTimeS:s.decelTimeS,step=60/Math.max(.1,ramp)*dt,error=target-s.outputHz;
+    const target=s.running?Math.max(s.minFreqHz,Math.min(s.maxFreqHz,s.referenceHz)):0,rising=target>s.outputHz,ramp=rising?s.accelTimeS:s.decelTimeS,step=Math.max(.01,s.maxFreqHz)/Math.max(.01,ramp)*dt,error=target-s.outputHz;
     s.outputHz=Math.max(0,Math.abs(error)<=step?target:s.outputHz+Math.sign(error)*step);
     const load=s.loadPercent/100,sync=120*s.outputHz/s.poles;
     let slip=Math.min(.09,.007+.04*load);if(s.faultDescription==="Motor stall")slip=.98;
     s.rpm=s.direction*sync*(1-slip);
-    s.voltageV=s.powered?Math.min(s.nominalVoltageV,s.nominalVoltageV*s.outputHz/50):0;
+    s.voltageV=s.powered?Math.min(s.nominalVoltageV,s.nominalVoltageV*s.outputHz/Math.max(.01,s.motorNpHz)):0;
     s.currentA=s.outputHz>.05?s.nominalCurrentA*(.18+.72*load+Math.min(.45,Math.abs(error)/25)):0;
     if(s.faultDescription==="Motor overload")s.currentA*=1.55;
     if(s.faultDescription==="Motor stall")s.currentA*=2.4;
-    const ratedTorque=5500/Math.max(1,(120*50/s.poles)*2*Math.PI/60);
+    const ratedTorque=5500/Math.max(1,(120*s.motorNpHz/s.poles)*2*Math.PI/60);
     s.torqueNm=s.outputHz>.05?ratedTorque*load:0;
     if(s.faultCode)s.status="FAULTED";
     else if(!s.powered)s.status="POWER OFF";
